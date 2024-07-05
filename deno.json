@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "dev": "deno run -A --watch --unstable-kv --allow-env main.ts",
+    "deploy": "deployctl deploy --allow-env --allow-net --unstable-kv main.ts"
+  },
+  "imports": {
+    "#deps": "./src/deps.ts",
+    "@oak/oak": "https://deno.land/x/oak@v16.1.0/mod.ts",
+    "std/": "https://deno.land/std@0.224.0/",
+    "bcrypt": "https://deno.land/x/bcrypt@v0.4.1/mod.ts"
+  },
+  "deploy": {
+    "project": "2a69726f-5762-4c76-94f4-18c1491ff86b",
+    "exclude": [
+      "**/node_modules"
+    ],
+    "include": [],
+    "entrypoint": "main.ts"
+  }
+}
