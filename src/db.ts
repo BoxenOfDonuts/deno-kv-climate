@@ -1,12 +1,12 @@
 export interface Room {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
 }
 
 export interface Climate {
-    temperature: number;
-    humidity: number;
-    lastUpdateDate: Date;
+  temperature: number;
+  humidity: number;
+  lastUpdateDate: Date;
 }
 
 /**
@@ -19,61 +19,57 @@ const kv = await Deno.openKv();
  * @param room
  */
 export async function upsertRoom(room: Room) {
-    room.name = room.name.toLowerCase();
-    const roomKey = ["room", room.id];
-    const roomByNameKey = ["room_by_name", room.name];
+  room.name = room.name.toLowerCase();
+  const roomKey = ["room", room.id];
+  const roomByNameKey = ["room_by_name", room.name];
+  const climateKey = ["room_climate", room.name];
 
-    const oldRoom = await kv.get<Room>(roomKey);
+  const oldRoom = await kv.get<Room>(roomKey);
+  const ao = kv.atomic().check(oldRoom);
 
-    if (!oldRoom.value) {
-        const ok = await kv.atomic()
-            .check(oldRoom)
-            .set(roomKey, room)
-            .set(roomByNameKey, room)
-            .commit();
-        if (!ok) throw new Error("Something went wrong.");
-    } else {
-        const ok = await kv.atomic()
-            .check(oldRoom)
-            .delete(["room_by_name", oldRoom.value.name])
-            .set(roomKey, room)
-            .set(roomByNameKey, room)
-            .commit();
-        if (!ok) throw new Error("Something went wrong.");
-    }
+  if (!oldRoom.value) {
+    ao.set(roomKey, room).set(roomByNameKey, room);
+  } else {
+    const oldClimate = await kv.get<Climate>([
+      "room_climate",
+      oldRoom.value.name,
+    ]);
+    ao
+      .delete(["room_by_name", oldRoom.value.name])
+      .delete(["room_climate", oldRoom.value.name])
+      .set(roomKey, room)
+      .set(roomByNameKey, room)
+      .set(climateKey, oldClimate.value);
+  }
+
+  const ok = await ao.commit();
+  if (!ok) {
+    throw new Error(`Failed to update room '${room.name}'.`);
+  }
 }
 
 /**
  * Update climate.
- * @param room
+ * @param roomName
  * @param climate
  */
-export async function upsertClimate(room: Room, climate: Climate) {
-    room.name = room.name.toLowerCase();
-    const roomKey = ["room", room.id];
-    const roomByNameKey = ["room_by_name", room.name];
-    const climateKey = ["room_climate", room.name];
+export async function upsertClimate(roomName: string, climate: Climate) {
+  roomName = roomName.toLowerCase();
+  const roomByNameKey = ["room_by_name", roomName];
+  const climateKey = ["room_climate", roomName];
 
-    const oldRoom = await kv.get<Room>(roomKey);
+  const room = await kv.get<Room>(roomByNameKey);
 
-    if (!oldRoom.value) {
-        const ok = await kv.atomic()
-            .check(oldRoom)
-            .set(roomKey, room)
-            .set(roomByNameKey, room)
-            .set(climateKey, climate)
-            .commit();
-        if (!ok) throw new Error("Something went wrong.");
-    } else {
-        const ok = await kv.atomic()
-            .check(oldRoom)
-            .delete(["room_by_name", oldRoom.value.name])
-            .set(roomKey, room)
-            .set(roomByNameKey, room)
-            .set(climateKey, climate)
-            .commit();
-        if (!ok) throw new Error("Something went wrong.");
-    }
+  if (!room.value) {
+    console.error(`Room '${roomName}' not found.`);
+    return;
+  }
+  const ok = await kv.set(climateKey, climate);
+  if (!ok) {
+    throw new Error(
+      `Failed to update climate settings for room '${roomName}'.`,
+    );
+  }
 }
 
 /**
@@ -81,11 +77,11 @@ export async function upsertClimate(room: Room, climate: Climate) {
  * @returns <Room>
  */
 export async function getAllRooms() {
-    const rooms = [];
-    for await (const res of kv.list({ prefix: ["room"] })) {
-        rooms.push(res.value);
-    }
-    return rooms;
+  const rooms = [];
+  for await (const res of kv.list({ prefix: ["room"] })) {
+    rooms.push(res.value);
+  }
+  return rooms;
 }
 
 /**
@@ -93,14 +89,14 @@ export async function getAllRooms() {
  * @returns <Climate>
  */
 export async function getAllRoomClimates() {
-    const climates = [];
-    for await (const res of kv.list<Room>({ prefix: ["room"] })) {
-        // attach room name and id to climate
-        const room = await getRoomById(res.value.id) as Room;
-        const climate = await getClimateByRoomName(room.name);
-        climates.push({ ...room, ...climate });
-    }
-    return climates;
+  const climates = [];
+  for await (const res of kv.list<Room>({ prefix: ["room"] })) {
+    // attach room name and id to climate
+    const room = await getRoomById(res.value.id) as Room;
+    const climate = await getClimateByRoomName(room.name);
+    climates.push({ ...room, ...climate });
+  }
+  return climates;
 }
 
 /**
@@ -109,7 +105,7 @@ export async function getAllRoomClimates() {
  * @returns <Room>
  */
 export async function getRoomById(id: string) {
-    return (await kv.get<Room>(["room", id])).value;
+  return (await kv.get<Room>(["room", id])).value;
 }
 
 /**
@@ -119,9 +115,9 @@ export async function getRoomById(id: string) {
  */
 // this is the problem function
 export async function getRoomByName(name: string) {
-    name = name.toLowerCase();
-    const roomByNameKey = ["room_by_name", name];
-    return (await kv.get(roomByNameKey)).value as Room;
+  name = name.toLowerCase();
+  const roomByNameKey = ["room_by_name", name];
+  return (await kv.get(roomByNameKey)).value as Room;
 }
 
 /**
@@ -130,10 +126,10 @@ export async function getRoomByName(name: string) {
  * @returns <Climate>
  */
 export async function getClimateByRoomName(name: string) {
-    name = name.toLowerCase();
-    // const room = await getRoomByName(name);
-    return (await kv.get<Climate>(["room_climate", name]))
-        .value as Climate;
+  name = name.toLowerCase();
+  // const room = await getRoomByName(name);
+  return (await kv.get<Climate>(["room_climate", name]))
+    .value as Climate;
 }
 
 /**
@@ -141,12 +137,25 @@ export async function getClimateByRoomName(name: string) {
  * @param id
  */
 export async function deleteRoomByName(name: string) {
-    name = name.toLowerCase();
-    const room = await getRoomByName(name);
-    const roomKey = ["room", room.id];
-    const roomByNameKey = ["room_by_name", room.name];
-    const climateKey = ["room_climate", room.name];
-    await kv.delete(roomKey);
-    await kv.delete(roomByNameKey);
-    await kv.delete(climateKey);
+  name = name.toLowerCase();
+  const room = await getRoomByName(name);
+  if (!room) {
+    console.info(`Room '${name}' not found.`);
+    return;
+  }
+  const roomKey = ["room", room.id];
+  const roomByNameKey = ["room_by_name", room.name];
+  const climateKey = ["room_climate", room.name];
+  await kv.delete(roomKey);
+  await kv.delete(roomByNameKey);
+  await kv.delete(climateKey);
+}
+
+/**
+ * Get all keys.
+ * @param prefix
+ */
+export async function getAllKeys(value?: string) {
+  const prefix = value ? [value] : [];
+  return await Array.fromAsync(kv.list({ prefix }));
 }
