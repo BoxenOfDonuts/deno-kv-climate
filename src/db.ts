@@ -9,10 +9,27 @@ export interface Climate {
   lastUpdateDate: Date;
 }
 
+export interface CacheEntry<T> {
+  value: T;
+}
+
+const roomCache: Record<string, CacheEntry<Room>> = {};
+
+function getCacheEntry<T>(key: string) {
+  return roomCache[key] || { value: null };
+}
+
 /**
  * Open KV.
  */
 const kv = await Deno.openKv();
+
+// warm up the cache
+for await (const res of kv.list<Room>({ prefix: ["room"] })) {
+  roomCache[res.value.name] = {
+    value: res.value,
+  };
+}
 
 /**
  * Upsert room.
@@ -53,12 +70,12 @@ export async function upsertRoom(room: Room) {
  * @param roomName
  * @param climate
  */
+// upsert climate has about the same writes now as the original function!
 export async function upsertClimate(roomName: string, climate: Climate) {
   roomName = roomName.toLowerCase();
-  const roomByNameKey = ["room_by_name", roomName];
   const climateKey = ["room_climate", roomName];
 
-  const room = await kv.get<Room>(roomByNameKey);
+  const room = getCacheEntry(roomName);
 
   if (!room.value) {
     console.error(`Room '${roomName}' not found.`);
