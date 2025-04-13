@@ -1,6 +1,11 @@
 import { Application, Router } from "@oak/oak";
-import { compareSync } from "bcrypt";
-import { PASSWORD, USER_NAME } from "./constants/constants.ts";
+import { compare } from "bcrypt";
+import {
+  PASSWORD,
+  USER_NAME,
+  AUTH_CACHE_KEY,
+  CACHE_TTL,
+} from "./constants/constants.ts";
 
 import {
   createRoom,
@@ -17,6 +22,7 @@ import {
 } from "./services/db.ts";
 
 const router = new Router();
+const kv = await Deno.openKv(":memory:");
 
 router
   .get("/rooms", async (ctx) => {
@@ -42,7 +48,7 @@ router
       ctx.response.status = 409;
       return;
     }
-    return ctx.response.status = 201;
+    return (ctx.response.status = 201);
   })
   .put("/rooms", async (ctx) => {
     const body = ctx.request.body;
@@ -52,7 +58,7 @@ router
       ctx.response.status = 409;
       return;
     }
-    return ctx.response.status = 201;
+    return (ctx.response.status = 201);
   })
   .put("/rooms/:name/climate", async (ctx) => {
     const name = ctx?.params?.name;
@@ -63,12 +69,12 @@ router
       ctx.response.status = 409;
       return;
     }
-    return ctx.response.status = 201;
+    return (ctx.response.status = 201);
   })
   .delete("/rooms/:name", async (ctx) => {
     const name = ctx?.params?.name;
     await deleteRoom(name);
-    return ctx.response.status = 204;
+    return (ctx.response.status = 204);
   })
   .get("/all", async (ctx) => {
     const prefix = ctx.request.url.searchParams.get("prefix");
@@ -103,19 +109,40 @@ app.use(async (ctx, next) => {
     await next();
     return;
   }
+
   const authHeader = ctx.request.headers.get("Authorization");
   if (!authHeader) {
     ctx.response.headers.append("WWW-Authenticate", "Basic");
     ctx.response.status = 401;
     return;
   }
+
   const b64auth = (authHeader || "").split(" ")[1] || "";
-  const [username, password] = atob(b64auth).split(":");
-  if (!username || !password) {
+  const cachedAuth = await kv.get([AUTH_CACHE_KEY, b64auth]);
+  if (cachedAuth.value !== null) {
+    if (cachedAuth.value === true) {
+      await next();
+      return;
+    }
     ctx.response.status = 401;
     return;
   }
-  if (username === USER_NAME && compareSync(password, PASSWORD)) {
+
+  const [username, password] = atob(b64auth).split(":");
+  if (!username || !password) {
+    await kv.set([AUTH_CACHE_KEY, b64auth], false, {
+      expireIn: CACHE_TTL,
+    });
+    ctx.response.status = 401;
+    return;
+  }
+
+  const isValid = username === USER_NAME && (await compare(password, PASSWORD));
+  await kv.set([AUTH_CACHE_KEY, b64auth], isValid, {
+    expireIn: CACHE_TTL,
+  });
+
+  if (isValid) {
     await next();
   } else {
     ctx.response.status = 401;
