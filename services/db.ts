@@ -82,6 +82,10 @@ export async function upsertClimate(roomName: string, climate: Climate) {
   const roomKey = [ROOM_KEY, roomName];
   const climateKey = [ROOM_CLIMATE_KEY, roomName];
 
+  if (!climate.lastUpdateDate) {
+    climate.lastUpdateDate = new Date();
+  }
+
   const room = await kv.get<Room>(roomKey);
   if (!room.value) {
     console.error(`Room '${roomName}' not found.`);
