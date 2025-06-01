@@ -1,6 +1,6 @@
 {
   "tasks": {
-    "dev": "deno run -A --watch --unstable-kv --allow-env main.ts",
+    "dev": "deno run -A --watch --unstable-kv main.ts",
     "deploy": "deployctl deploy --allow-env --allow-net --unstable-kv main.ts"
   },
   "imports": {

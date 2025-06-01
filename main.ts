@@ -1,10 +1,10 @@
 import { Application, Router } from "@oak/oak";
 import { compare } from "bcrypt";
 import {
-  PASSWORD,
-  USER_NAME,
   AUTH_CACHE_KEY,
   CACHE_TTL,
+  PASSWORD,
+  USER_NAME,
 } from "./constants/constants.ts";
 
 import {
