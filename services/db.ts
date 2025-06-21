@@ -13,7 +13,7 @@ export interface Room {
 export interface Climate {
   temperature: number;
   humidity: number;
-  lastUpdateDate: Date;
+  lastUpdateDate: string;
 }
 
 /**
@@ -83,7 +83,17 @@ export async function upsertClimate(roomName: string, climate: Climate) {
   const climateKey = [ROOM_CLIMATE_KEY, roomName];
 
   if (!climate.lastUpdateDate) {
-    climate.lastUpdateDate = new Date();
+    // format as like this in UTC "06/21/2025, 14:48:25"
+    climate.lastUpdateDate = new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZone: "UTC",
+    });
   }
 
   const room = await kv.get<Room>(roomKey);
@@ -115,7 +125,7 @@ export async function getAllRoomClimates() {
   const climates = [];
   for await (const res of kv.list<Room>({ prefix: [ROOM_KEY] })) {
     // attach room name and id to climate
-    const room = await getRoom(res.value.name) as Room;
+    const room = (await getRoom(res.value.name)) as Room;
     const climate = await getClimate(room.name);
     climates.push({ ...room, ...climate });
   }
@@ -140,8 +150,7 @@ export async function getRoom(name: string) {
  * @returns <Climate>
  */
 export async function getClimate(name: string) {
-  return (await kv.get<Climate>([ROOM_CLIMATE_KEY, name]))
-    .value as Climate;
+  return (await kv.get<Climate>([ROOM_CLIMATE_KEY, name])).value as Climate;
 }
 
 /**
